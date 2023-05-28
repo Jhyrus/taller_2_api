@@ -1,0 +1,48 @@
+# Archivos generados por Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos virtuales de Python
+venv/
+env/
+ENV/
+*.env
+
+# Archivos de registro y salida
+*.log
+logs/
+
+# Archivos de configuración
+*.ini
+*.cfg
+*.conf
+
+# Archivos de caché
+*.cache
+.cache/
+
+# Carpeta de compilación
+*.pyc
+
+# Archivos de compilación de C
+*.so
+*.pyd
+*.dll
+
+# Archivos de documentación
+docs/_build/
+docs/api/
+
+# Archivos de IDE
+.idea/
+.vscode/
+
+# Archivos de pruebas
+htmlcov/
+.coverage
+
+# Dependencias y módulos
+pip-log.txt
+pip-delete-this-directory.txt
