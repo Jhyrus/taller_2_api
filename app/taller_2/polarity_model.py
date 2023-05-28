@@ -23,6 +23,7 @@ port = 8000
 client = MongoClient(mongostr, port)
 db = client["Taller2"]
 collection = db["Tweets"]
+UsuariosC=db["Usuarios"]
 
 # Conexión a la base de datos MongoDB
 #client = MongoClient('mongodb://localhost:27017')
@@ -131,6 +132,19 @@ async def all_users() -> List:
     except Exception as e:
         return {"error": str(e)}
 
+# Servicio que obtiene el detalle de ese Usuario
+@router.get("/taller_2/detail_users")
+async def detail_users(Username) -> List:
+    try:
+        query = {"Usuario": Username}
+        result = await asyncio.to_thread(list, UsuariosC.find(query))
+        for Usuario in result:
+            Usuario["_id"] = str(Usuario["_id"])
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # Servicio que obtiene el listado de todos los temas
 @router.get("/taller_2/all_subjects")
 async def all_subjects() -> List:
@@ -140,6 +154,46 @@ async def all_subjects() -> List:
             {"$project": {"_id": 0, "Tema": "$_id"}}
         ]
         result = await asyncio.to_thread(list, collection.aggregate(pipeline))
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Servicio que obtiene el listado de todos los Jobs de los usuarios
+@router.get("/taller_2/all_jobs")
+async def all_jobs() -> List:
+    try:
+        pipeline = [
+            {'$group': {'_id': '$Profesion'}},
+            {"$project": {"_id": 0, "Profesion": "$_id"}}
+        ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+# Servicio que obtiene el listado de todos los Generos de los usuarios
+@router.get("/taller_2/all_gender")
+async def all_gender() -> List:
+    try:
+        pipeline = [
+            {'$group': {'_id': '$Genero'}},
+            {"$project": {"_id": 0, "Genero": "$_id"}}
+        ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+# Servicio que obtiene el listado de todos los Sectores de los usuarios
+@router.get("/taller_2/all_sectors")
+async def all_sectors() -> List:
+    try:
+        pipeline = [
+            {'$group': {'_id': '$Sector'}},
+            {"$project": {"_id": 0, "Sector": "$_id"}}
+        ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
         return result
     except Exception as e:
         return {"error": str(e)}
@@ -394,7 +448,6 @@ async def tweets_fechas_polaridad() -> List:
     except Exception as e:
         return {"error": str(e)}
 
-
 # Servicio que obtiene los Tweets por Usuario
 @router.get("/taller_2/tweets_by_user")
 async def tweets_by_user(Username) -> List:
@@ -420,6 +473,7 @@ def tweet_by_Id(Id):
     except Exception as e:
         return {"error": str(e)}
 
+#Servicio que realiza la obtencion de entidades de un tweet utilizando spacy
 @router.get("/taller_2/semantic_analysis_by_tweet_id")
 async def semantic_analysis_by_tweet_id(Id):
     try:
@@ -446,7 +500,133 @@ async def semantic_analysis_by_tweet_id(Id):
     except Exception as e:
         return {"error": str(e)}
 
+#Servicio que obtiene todos los tweets escritos por un genero
+@router.get("/taller_2/tweets_by_gender")
+async def tweets_by_gender(gender):
+    try:        
+        pipeline = [
+                {
+                    '$match': {
+                        'Genero': gender
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'Tweets', 
+                        'localField': 'Usuario', 
+                        'foreignField': 'Usuario', 
+                        'as': 'tweets_usuario'
+                    }
+                }, {
+                '$project': {
+                    'Usuario': 1, 
+                    'Genero': 1, 
+                    'Sector': 1, 
+                    'Profesion': 1, 
+                    'Edad': 1, 
+                    'tweets_usuario': {
+                        '$map': {
+                            'input': '$tweets_usuario', 
+                            'as': 'tweet', 
+                            'in': {
+                                'Tweet': '$$tweet.Tweet'
+                            }
+                        }
+                    }
+                }
+            }
+            ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
+        for usuario in result:
+            usuario["_id"] = str(usuario["_id"])
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
+#Servicio que obtiene todos los tweets escritos por una profesion
+@router.get("/taller_2/tweets_by_job")
+async def tweets_by_job(Job):
+    try:        
+        pipeline = [
+                {
+                    '$match': {
+                        'Profesion': Job
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'Tweets', 
+                        'localField': 'Usuario', 
+                        'foreignField': 'Usuario', 
+                        'as': 'tweets_usuario'
+                    }
+                }, {
+                '$project': {
+                    'Usuario': 1, 
+                    'Genero': 1, 
+                    'Sector': 1, 
+                    'Profesion': 1, 
+                    'Edad': 1, 
+                    'tweets_usuario': {
+                        '$map': {
+                            'input': '$tweets_usuario', 
+                            'as': 'tweet', 
+                            'in': {
+                                'Tweet': '$$tweet.Tweet'
+                            }
+                        }
+                    }
+                }
+            }
+            ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
+        for usuario in result:
+            usuario["_id"] = str(usuario["_id"])
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+#Servicio que obtiene todos los tweets escritos por un sector en particular.
+@router.get("/taller_2/tweets_by_sector")
+async def tweets_by_sector(sector):
+    try:        
+        pipeline = [
+                {
+                    '$match': {
+                        'Sector': sector
+                    }
+                }, {
+                    '$lookup': {
+                        'from': 'Tweets', 
+                        'localField': 'Usuario', 
+                        'foreignField': 'Usuario', 
+                        'as': 'tweets_usuario'
+                    }
+                }, {
+                '$project': {
+                    'Usuario': 1, 
+                    'Genero': 1, 
+                    'Sector': 1, 
+                    'Profesion': 1, 
+                    'Edad': 1, 
+                    'tweets_usuario': {
+                        '$map': {
+                            'input': '$tweets_usuario', 
+                            'as': 'tweet', 
+                            'in': {
+                                'Tweet': '$$tweet.Tweet'
+                            }
+                        }
+                    }
+                }
+            }
+            ]
+        result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
+        for usuario in result:
+            usuario["_id"] = str(usuario["_id"])
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+#Servicio de enriquecimiento de contenido con base en los resultados del api de DBPedia
 @router.get("/taller_2/dbpedia_by_tweet_id")
 async def dbpedia_by_tweet_id(Id):
     try:
