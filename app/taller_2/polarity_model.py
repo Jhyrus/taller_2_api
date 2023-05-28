@@ -18,14 +18,16 @@ nltk.download('stopwords')
 nlp = spacy.load('es_core_news_sm')
 
 # Conecta al servidor remoto de MongoDB
-# mongostr = "mongodb+srv://ffserrano42:WB5I8PRECKh6rTEv@cluster0.ul9f2rr.mongodb.net/test"
-# port = 8000
-# client = MongoClient(mongostr, port)
+mongostr = "mongodb+srv://ffserrano42:WB5I8PRECKh6rTEv@cluster0.ul9f2rr.mongodb.net/test"
+port = 8000
+client = MongoClient(mongostr, port)
+db = client["Taller2"]
+collection = db["Tweets"]
 
 # Conexión a la base de datos MongoDB
-client = MongoClient('mongodb://localhost:27017')
-db = client["taller_2"]
-collection = db["tweets_2"]
+#client = MongoClient('mongodb://localhost:27017')
+#db = client["taller_2"]
+#collection = db["tweets_2"]
 
 # Carga el léxico de emociones desde el archivo
 emotion_lexicon = defaultdict(list)

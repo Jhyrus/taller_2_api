@@ -2,7 +2,7 @@ import requests
 
 
 CONFIDENCE = '0'
-SUPPORT = '10'
+SUPPORT = '0'
 BASE_URL = 'http://api.dbpedia-spotlight.org/es/annotate?text={text}&confidence={confidence}&support={support}'
 
 
