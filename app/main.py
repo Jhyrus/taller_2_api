@@ -13,7 +13,6 @@ from json import JSONEncoder
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 import pandas as pd
-
 # Importo los endpoint del taller 2
 from taller_2.get_tweets import router as tweets_router
 from taller_2.polarity_model import router as polarity_router
