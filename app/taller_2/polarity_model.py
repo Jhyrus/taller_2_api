@@ -1,3 +1,4 @@
+from datetime import datetime
 import nltk
 import spacy
 import asyncio
@@ -10,6 +11,14 @@ from fastapi import APIRouter
 from bson import ObjectId
 from typing import List
 from taller_2.dbPedia import consultar_dbpedia_spotlight
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import make_pipeline
+import nltk
+import re
+
+# Crear el modelo
+model = make_pipeline(CountVectorizer(), MultinomialNB())
 
 router = APIRouter()
 
@@ -22,8 +31,8 @@ mongostr = "mongodb+srv://ffserrano42:WB5I8PRECKh6rTEv@cluster0.ul9f2rr.mongodb.
 port = 8000
 client = MongoClient(mongostr, port)
 db = client["Taller2"]
-collection = db["Tweets"]
-UsuariosC=db["Usuarios"]
+collection = db["Tweets1"]
+UsuariosC = db["Usuarios"]
 
 # Conexión a la base de datos MongoDB
 # client = MongoClient('mongodb://localhost:27017')
@@ -70,6 +79,8 @@ def analyze_emotions(usuarios: str, temas: str, fecha_inicio: str, fecha_fin: st
     usuario_tema_emotion_counts = defaultdict(
         lambda: defaultdict(lambda: defaultdict(int)))
     usuario_emotion_counts = defaultdict(lambda: defaultdict(int))
+    usuario_tema_tweet_counts = defaultdict(lambda: defaultdict(int))
+    usuario_tweet_counts = defaultdict(int)
 
     vectorizer = TfidfVectorizer()
     processed_tweets = []
@@ -98,6 +109,9 @@ def analyze_emotions(usuarios: str, temas: str, fecha_inicio: str, fecha_fin: st
                     usuario_tema_emotion_counts[usuario][tema][emotion] += score
                     usuario_emotion_counts[usuario][emotion] += score
 
+        usuario_tema_tweet_counts[usuario][tema] += 1
+        usuario_tweet_counts[usuario] += 1
+
         emotion_counts_per_tweet.append(dict(emotion_counts))
 
     polarity_indices_spanish = {
@@ -123,9 +137,9 @@ def analyze_emotions(usuarios: str, temas: str, fecha_inicio: str, fecha_fin: st
     for usuario, tema_emotion_counts in usuario_tema_emotion_counts.items():
         for tema, emotion_counts in tema_emotion_counts.items():
             usuario_tema_emotion_counts[usuario][tema] = {polarity_indices_spanish[emotion]: round(
-                value / len(tweets), 2) for emotion, value in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)}
+                value / usuario_tema_tweet_counts[usuario][tema], 2) for emotion, value in sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)}
         usuario_emotion_counts[usuario] = {polarity_indices_spanish[emotion]: round(
-            value / len(tweets), 2) for emotion, value in sorted(usuario_emotion_counts[usuario].items(), key=lambda x: x[1], reverse=True)}
+            value / usuario_tweet_counts[usuario], 2) for emotion, value in sorted(usuario_emotion_counts[usuario].items(), key=lambda x: x[1], reverse=True)}
 
     emotion_results = []
     for tweet, emotion_counts in zip(tweets, emotion_counts_per_tweet):
@@ -146,6 +160,7 @@ def analyze_emotions(usuarios: str, temas: str, fecha_inicio: str, fecha_fin: st
         "analisis_por_tweet": emotion_results,
         "analisis_agregado": polarity_sorted_total
     }
+
 
 # Servicio que obtiene el listado total de tweets en la base de datos
 
@@ -178,6 +193,8 @@ async def all_users() -> List:
         return {"error": str(e)}
 
 # Servicio que obtiene el detalle de ese Usuario
+
+
 @router.get("/taller_2/detail_users")
 async def detail_users(Username) -> List:
     try:
@@ -220,6 +237,8 @@ async def all_jobs() -> List:
         return {"error": str(e)}
 
 # Servicio que obtiene el listado de todos los Generos de los usuarios
+
+
 @router.get("/taller_2/all_gender")
 async def all_gender() -> List:
     try:
@@ -233,6 +252,8 @@ async def all_gender() -> List:
         return {"error": str(e)}
 
 # Servicio que obtiene el listado de todos los Sectores de los usuarios
+
+
 @router.get("/taller_2/all_sectors")
 async def all_sectors() -> List:
     try:
@@ -506,6 +527,8 @@ async def tweets_fechas_polaridad() -> List:
         return {"error": str(e)}
 
 # Servicio que obtiene los Tweets por Usuario
+
+
 @router.get("/taller_2/tweets_by_user")
 async def tweets_by_user(Username) -> List:
     try:
@@ -532,7 +555,8 @@ def tweet_by_Id(Id):
     except Exception as e:
         return {"error": str(e)}
 
-#Servicio que realiza la obtencion de entidades de un tweet utilizando spacy
+# Servicio que realiza la obtencion de entidades de un tweet utilizando spacy
+
 
 @router.get("/taller_2/semantic_analysis_by_tweet_id")
 async def semantic_analysis_by_tweet_id(Id):
@@ -542,6 +566,7 @@ async def semantic_analysis_by_tweet_id(Id):
         tweet = collection.find_one(query)
         tweet["_id"] = str(tweet["_id"])
         mensaje = tweet["Tweet"]
+        usuario = tweet["Usuario"]
         doc = nlp(mensaje)
         resultados = []
         for token in doc:
@@ -554,39 +579,62 @@ async def semantic_analysis_by_tweet_id(Id):
             resultados.append(resultado)
         respuesta = {
             "texto_original": mensaje,
-            "tokens": resultados
+            "tokens": resultados,
+            "Usuario": usuario,
         }
         return respuesta
     except Exception as e:
         return {"error": str(e)}
 
-#Servicio que obtiene todos los tweets escritos por un genero
+# Servicio que obtiene todos los tweets escritos por un genero
+
+
 @router.get("/taller_2/tweets_by_gender")
-async def tweets_by_gender(gender):
-    try:        
+async def tweets_by_gender(gender: str, fecha_inicio: str, fecha_fin: str):
+    try:
+        fecha_inicio = datetime.strptime(fecha_inicio, "%d-%m-%Y")
+        fecha_fin = datetime.strptime(fecha_fin, "%d-%m-%Y")
+
         pipeline = [
-                {
-                    '$match': {
-                        'Genero': gender
-                    }
-                }, {
-                    '$lookup': {
-                        'from': 'Tweets', 
-                        'localField': 'Usuario', 
-                        'foreignField': 'Usuario', 
-                        'as': 'tweets_usuario'
-                    }
-                }, {
+            {
+                '$match': {
+                    'Genero': gender
+                }
+            },
+            {
+                '$lookup': {
+                    'from': collection.name,
+                    'let': {'usuario': '$Usuario', 'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin},
+                    'pipeline': [
+                        {
+                            '$match': {
+                                '$expr': {
+                                    '$and': [
+                                        {'$eq': ['$Usuario', '$$usuario']},
+                                        {'$gte': ['$Fecha', '$$fecha_inicio']},
+                                        {'$lte': ['$Fecha', '$$fecha_fin']}
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            '$project': {'Tweet': 1}
+                        }
+                    ],
+                    'as': 'tweets_usuario'
+                }
+            },
+            {
                 '$project': {
-                    'Usuario': 1, 
-                    'Genero': 1, 
-                    'Sector': 1, 
-                    'Profesion': 1, 
-                    'Edad': 1, 
+                    'Usuario': 1,
+                    'Genero': 1,
+                    'Sector': 1,
+                    'Profesion': 1,
+                    'Edad': 1,
                     'tweets_usuario': {
                         '$map': {
-                            'input': '$tweets_usuario', 
-                            'as': 'tweet', 
+                            'input': '$tweets_usuario',
+                            'as': 'tweet',
                             'in': {
                                 'Tweet': '$$tweet.Tweet'
                             }
@@ -594,7 +642,7 @@ async def tweets_by_gender(gender):
                     }
                 }
             }
-            ]
+        ]
         result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
         for usuario in result:
             usuario["_id"] = str(usuario["_id"])
@@ -602,33 +650,35 @@ async def tweets_by_gender(gender):
     except Exception as e:
         return {"error": str(e)}
 
-#Servicio que obtiene todos los tweets escritos por una profesion
+# Servicio que obtiene todos los tweets escritos por una profesion
+
+
 @router.get("/taller_2/tweets_by_job")
 async def tweets_by_job(Job):
-    try:        
+    try:
         pipeline = [
-                {
-                    '$match': {
-                        'Profesion': Job
-                    }
-                }, {
-                    '$lookup': {
-                        'from': 'Tweets', 
-                        'localField': 'Usuario', 
-                        'foreignField': 'Usuario', 
-                        'as': 'tweets_usuario'
-                    }
-                }, {
+            {
+                '$match': {
+                    'Profesion': Job
+                }
+            }, {
+                '$lookup': {
+                    'from': collection.name,
+                    'localField': 'Usuario',
+                    'foreignField': 'Usuario',
+                    'as': 'tweets_usuario'
+                }
+            }, {
                 '$project': {
-                    'Usuario': 1, 
-                    'Genero': 1, 
-                    'Sector': 1, 
-                    'Profesion': 1, 
-                    'Edad': 1, 
+                    'Usuario': 1,
+                    'Genero': 1,
+                    'Sector': 1,
+                    'Profesion': 1,
+                    'Edad': 1,
                     'tweets_usuario': {
                         '$map': {
-                            'input': '$tweets_usuario', 
-                            'as': 'tweet', 
+                            'input': '$tweets_usuario',
+                            'as': 'tweet',
                             'in': {
                                 'Tweet': '$$tweet.Tweet'
                             }
@@ -636,7 +686,7 @@ async def tweets_by_job(Job):
                     }
                 }
             }
-            ]
+        ]
         result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
         for usuario in result:
             usuario["_id"] = str(usuario["_id"])
@@ -644,33 +694,56 @@ async def tweets_by_job(Job):
     except Exception as e:
         return {"error": str(e)}
 
-#Servicio que obtiene todos los tweets escritos por un sector en particular.
+# Servicio que obtiene todos los tweets escritos por un sector en particular.
+
+
 @router.get("/taller_2/tweets_by_sector")
-async def tweets_by_sector(sector):
-    try:        
+async def tweets_by_sector(sector: str, fecha_inicio: str, fecha_fin: str):
+    try:
+        # Convertir las cadenas de fecha en objetos de fecha
+        fecha_inicio = datetime.strptime(fecha_inicio, "%d-%m-%Y")
+        fecha_fin = datetime.strptime(fecha_fin, "%d-%m-%Y")
+
         pipeline = [
-                {
-                    '$match': {
-                        'Sector': sector
-                    }
-                }, {
-                    '$lookup': {
-                        'from': 'Tweets', 
-                        'localField': 'Usuario', 
-                        'foreignField': 'Usuario', 
-                        'as': 'tweets_usuario'
-                    }
-                }, {
+            {
+                '$match': {
+                    'Sector': sector
+                }
+            },
+            {
+                '$lookup': {
+                    'from': collection.name,
+                    'let': {'usuario': '$Usuario', 'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin},
+                    'pipeline': [
+                        {
+                            '$match': {
+                                '$expr': {
+                                    '$and': [
+                                        {'$eq': ['$Usuario', '$$usuario']},
+                                        {'$gte': ['$Fecha', '$$fecha_inicio']},
+                                        {'$lte': ['$Fecha', '$$fecha_fin']}
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            '$project': {'Tweet': 1}
+                        }
+                    ],
+                    'as': 'tweets_usuario'
+                }
+            },
+            {
                 '$project': {
-                    'Usuario': 1, 
-                    'Genero': 1, 
-                    'Sector': 1, 
-                    'Profesion': 1, 
-                    'Edad': 1, 
+                    'Usuario': 1,
+                    'Genero': 1,
+                    'Sector': 1,
+                    'Profesion': 1,
+                    'Edad': 1,
                     'tweets_usuario': {
                         '$map': {
-                            'input': '$tweets_usuario', 
-                            'as': 'tweet', 
+                            'input': '$tweets_usuario',
+                            'as': 'tweet',
                             'in': {
                                 'Tweet': '$$tweet.Tweet'
                             }
@@ -678,7 +751,7 @@ async def tweets_by_sector(sector):
                     }
                 }
             }
-            ]
+        ]
         result = await asyncio.to_thread(list, UsuariosC.aggregate(pipeline))
         for usuario in result:
             usuario["_id"] = str(usuario["_id"])
@@ -686,7 +759,9 @@ async def tweets_by_sector(sector):
     except Exception as e:
         return {"error": str(e)}
 
-#Servicio de enriquecimiento de contenido con base en los resultados del api de DBPedia
+# Servicio de enriquecimiento de contenido con base en los resultados del api de DBPedia
+
+
 @router.get("/taller_2/dbpedia_by_tweet_id")
 async def dbpedia_by_tweet_id(Id):
     try:
@@ -694,53 +769,56 @@ async def dbpedia_by_tweet_id(Id):
         query = {"_id": _id}
         tweet = collection.find_one(query)
         tweet["_id"] = str(tweet["_id"])
-        mensaje = tweet["Tweet"]
+        mensaje = tweet["Tweet Normalizado"]
         ubicacion = tweet["Ubicación"]
+        usuario = tweet["Usuario"]
         data = consultar_dbpedia_spotlight(mensaje)
         data_ubicacion = consultar_dbpedia_spotlight(ubicacion)
 
-        if "Resources" in data_ubicacion:
+        if data_ubicacion is not None and "Resources" in data_ubicacion:
             data_ubicacion = data_ubicacion["Resources"]
-            new_data_u = []
-            surfaceForms_u = set()  # Conjunto para almacenar las surfaceForms únicas
-            for item in data_ubicacion:
-                surfaceForm = item["@surfaceForm"]
-                if surfaceForm not in surfaceForms_u:
-                    new_item = {
-                        "@surfaceForm": surfaceForm,
-                        "@URI": item["@URI"]
-                    }
-                    new_data_u.append(new_item)
-                    surfaceForms_u.add(surfaceForm)
         else:
-            new_data_u = []
+            data_ubicacion = []
 
-        if "Resources" in data:
+        new_data_u = []
+        surfaceForms_u = set()  # Conjunto para almacenar las surfaceForms únicas
+        for item in data_ubicacion:
+            surfaceForm = item["@surfaceForm"]
+            if surfaceForm not in surfaceForms_u:
+                new_item = {
+                    "@surfaceForm": surfaceForm,
+                    "@URI": item["@URI"]
+                }
+                new_data_u.append(new_item)
+                surfaceForms_u.add(surfaceForm)
+
+        if data is not None and "Resources" in data:
             data = data["Resources"]
-            new_data = []
-            surfaceForms = set()  # Conjunto para almacenar las surfaceForms únicas
-            for item in data:
-                surfaceForm = item["@surfaceForm"]
-                if surfaceForm not in surfaceForms:
-                    new_item = {
-                        "@surfaceForm": surfaceForm,
-                        "@URI": item["@URI"]
-                    }
-                    new_data.append(new_item)
-                    surfaceForms.add(surfaceForm)
         else:
-            new_data = []
+            data = []
+
+        new_data = []
+        surfaceForms = set()  # Conjunto para almacenar las surfaceForms únicas
+        for item in data:
+            surfaceForm = item["@surfaceForm"]
+            if surfaceForm not in surfaceForms:
+                new_item = {
+                    "@surfaceForm": surfaceForm,
+                    "@URI": item["@URI"]
+                }
+                new_data.append(new_item)
+                surfaceForms.add(surfaceForm)
 
         respuesta = {
             "texto_original": mensaje,
             "ubicacion": ubicacion,
+            "Usuario": usuario,
             "DbPediaUbicacion": new_data_u,
             "DbPedia": new_data
         }
         return respuesta
     except Exception as e:
         return {"error": str(e)}
-
 
 @router.on_event("shutdown")
 def shutdown_event():
